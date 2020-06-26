@@ -295,10 +295,6 @@ public class StkAppService extends Service implements Runnable {
     // system property to set the STK specific default url for launch browser proactive cmds
     private static final String STK_BROWSER_DEFAULT_URL_SYSPROP = "persist.radio.stk.default_url";
 
-    // Description of the Icon that is being dispalyed in a Stk activity.
-    public static final String TEXT_DEFAULT_ICON = "Stk Default Icon";
-    public static final String TEXT_ICON_FROM_COMMAND="Stk Icon from Command";
-
     private static final int NOTIFICATION_ON_KEYGUARD = 1;
     private static final long[] VIBRATION_PATTERN = new long[] { 0, 350, 250, 350 };
     private BroadcastReceiver mUserPresentReceiver = null;
@@ -736,10 +732,8 @@ public class StkAppService extends Service implements Runnable {
             } else {
                 IccRefreshResponse state = new IccRefreshResponse();
                 state.refreshResult = args.getInt(AppInterface.REFRESH_RESULT);
-                state.aid = args.getString(AppInterface.AID);
 
-                CatLog.d(LOG_TAG, "Icc Refresh Result: "+ state.refreshResult
-                        + " aid: " + state.aid);
+                CatLog.d(LOG_TAG, "Icc Refresh Result: "+ state.refreshResult);
                 if ((state.refreshResult == IccRefreshResponse.REFRESH_RESULT_INIT) ||
                     (state.refreshResult == IccRefreshResponse.REFRESH_RESULT_RESET)) {
                     // Clear Idle Text
@@ -1038,6 +1032,13 @@ public class StkAppService extends Service implements Runnable {
         case DISPLAY_TEXT:
             TextMessage msg = cmdMsg.geTextMessage();
             waitForUsersResponse = msg.responseNeeded;
+            if (mStkContext[slotId].lastSelectedItem != null) {
+                msg.title = mStkContext[slotId].lastSelectedItem;
+            } else if (mStkContext[slotId].mMainCmd != null){
+                if (!getResources().getBoolean(R.bool.show_menu_title_only_on_menu)) {
+                    msg.title = mStkContext[slotId].mMainCmd.getMenu().title;
+                }
+            }
             //If we receive a low priority Display Text and the device is
             // not displaying any STK related activity and the screen is not idle
             // ( that is, device is in an interactive state), then send a screen busy
@@ -1116,26 +1117,13 @@ public class StkAppService extends Service implements Runnable {
             break;
         case SEND_DTMF:
         case SEND_SMS:
+        case REFRESH:
         case RUN_AT:
         case SEND_SS:
         case SEND_USSD:
         case GET_CHANNEL_STATUS:
             waitForUsersResponse = false;
             launchEventMessage(slotId);
-            //Reset the mCurrentCmd to mMainCmd, to avoid wrong TR sent for
-            //SEND_SMS/SS/USSD, when user launches STK app next time and do
-            //a menu selection.
-            mStkContext[slotId].mCurrentCmd = mStkContext[slotId].mMainCmd;
-            break;
-        case REFRESH:
-            waitForUsersResponse = false;
-            launchEventMessage(slotId);
-            // Idle mode text needs to be cleared for init or reset modes of refresh
-            if (cmdMsg.isRefreshResetOrInit()) {
-                mNotificationManager.cancel(getNotificationId(slotId));
-                mStkContext[slotId].mIdleModeTextCmd = null;
-                CatLog.d(this, "Clean idle mode text due to refresh");
-            }
             break;
         case LAUNCH_BROWSER:
             // The device setup process should not be interrupted by launching browser.
@@ -2032,7 +2020,6 @@ public class StkAppService extends Service implements Runnable {
         ImageView iv = (ImageView) v
                 .findViewById(com.android.internal.R.id.icon);
         if (msg.icon != null) {
-            iv.setContentDescription(TEXT_ICON_FROM_COMMAND);
             iv.setImageBitmap(msg.icon);
         } else {
             iv.setVisibility(View.GONE);
@@ -2155,8 +2142,6 @@ public class StkAppService extends Service implements Runnable {
                     .setSmallIcon(com.android.internal.R.drawable.stat_notify_sim_toolkit);
             notificationBuilder.setContentIntent(pendingIntent);
             notificationBuilder.setOngoing(true);
-            notificationBuilder.setStyle(new Notification.BigTextStyle(notificationBuilder)
-                    .bigText(msg.text));
             notificationBuilder.setOnlyAlertOnce(true);
             // Set text and icon for the status bar and notification body.
             if (mStkContext[slotId].mIdleModeTextCmd.hasIconLoadFailed() ||
@@ -2293,11 +2278,15 @@ public class StkAppService extends Service implements Runnable {
                     | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                     | getFlagActivityNoUserAction(InitiatedByUserAction.unknown, slotId));
             newIntent.putExtra("TEXT", mStkContext[slotId].mCurrentCmd.geTextMessage());
-            newIntent.putExtra("TONE", mStkContext[slotId].mCurrentCmd.getToneSettings());
             newIntent.putExtra(SLOT_ID, slotId);
             newIntent.setData(uriData);
             startActivity(newIntent);
         }
+    }
+
+    private void finishToneDialogActivity() {
+        Intent finishIntent = new Intent(FINISH_TONE_ACTIVITY_ACTION);
+        sendBroadcast(finishIntent);
     }
 
     private void handleStopTone(Message msg, int slotId) {
@@ -2308,6 +2297,9 @@ public class StkAppService extends Service implements Runnable {
         // 2.STOP_TONE_USER: user pressed the back key.
         if (msg.arg1 == OP_STOP_TONE) {
             resId = RES_ID_DONE;
+            // Dismiss Tone dialog, after finishing off playing the tone.
+            int finishActivity = (Integer) msg.obj;
+            if (finishActivity == 1) finishToneDialogActivity();
         } else if (msg.arg1 == OP_STOP_TONE_USER) {
             resId = RES_ID_END_SESSION;
         }

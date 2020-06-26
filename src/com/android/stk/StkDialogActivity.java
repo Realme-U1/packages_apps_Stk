@@ -25,7 +25,6 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.os.SystemProperties;
 import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
@@ -65,10 +64,6 @@ public class StkDialogActivity extends Activity {
 
 
     private AlertDialog mAlertDialog;
-
-    // system property to enable/disable adding content description
-    private static String ENABLE_CONTENT_DESCRIPTION = "persist.vendor.stk.enable_content";
-    private boolean mEnableContent = SystemProperties.getBoolean(ENABLE_CONTENT_DESCRIPTION, false);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -141,16 +136,8 @@ public class StkDialogActivity extends Activity {
 
         if (mTextMsg.icon != null) {
             iv.setImageBitmap(mTextMsg.icon);
-            if (mEnableContent) {
-                iv.setContentDescription(StkAppService.TEXT_ICON_FROM_COMMAND + ": "
-                    + mTextMsg.text);
-            }
         } else {
-            if (mEnableContent) {
-                iv.setContentDescription(StkAppService.TEXT_DEFAULT_ICON);
-            } else {
-                iv.setVisibility(View.GONE);
-            }
+            iv.setVisibility(View.GONE);
         }
 
         // Per spec, only set text if the icon is not provided or not self-explanatory
